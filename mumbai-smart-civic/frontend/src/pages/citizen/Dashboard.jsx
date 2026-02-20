@@ -16,12 +16,22 @@ export default function CitizenDashboard() {
     useEffect(() => {
         (async () => {
             try {
-                const [statsRes, complaintsRes] = await Promise.all([
-                    api.get('/c/dashboard/stats'),
-                    api.get('/c/complaints?limit=5'),
-                ]);
-                setStats(statsRes.data);
-                setRecent(Array.isArray(complaintsRes.data) ? complaintsRes.data : complaintsRes.data.complaints || []);
+                const complaintsRes = await api.get('/c/complaints/me');
+                const allComplaints = Array.isArray(complaintsRes.data)
+                    ? complaintsRes.data
+                    : complaintsRes.data.complaints || [];
+
+                const resolved = allComplaints.filter((c) => c.status === 'Resolved').length;
+                const pending = allComplaints.filter((c) => c.status === 'Open').length;
+                const inProgress = allComplaints.filter((c) => c.status === 'In Progress').length;
+
+                setStats({
+                    total: allComplaints.length,
+                    resolved,
+                    pending,
+                    in_progress: inProgress,
+                });
+                setRecent(allComplaints.slice(0, 5));
             } catch {
                 setStats({ total: 12, resolved: 8, pending: 3, in_progress: 1 });
                 setRecent([]); // fallback empty for clean look

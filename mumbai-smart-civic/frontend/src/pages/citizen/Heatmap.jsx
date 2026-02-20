@@ -10,8 +10,16 @@ export default function Heatmap() {
     useEffect(() => {
         (async () => {
             try {
-                const res = await api.get('/c/heatmap');
-                setPoints(Array.isArray(res.data) ? res.data : []);
+                const res = await api.get('/c/complaints/me');
+                const complaints = Array.isArray(res.data) ? res.data : [];
+                const mapped = complaints
+                    .filter((item) => Array.isArray(item?.location?.coordinates))
+                    .map((item) => ({
+                        lat: item.location.coordinates[1],
+                        lng: item.location.coordinates[0],
+                        intensity: Number(item.priority_score || 0.5),
+                    }));
+                setPoints(mapped);
             } catch {
                 setPoints([
                     { lat: 19.076, lng: 72.8777, intensity: 0.85 },
@@ -41,7 +49,7 @@ export default function Heatmap() {
             {loading ? (
                 <div className="skeleton" style={{ height: 'calc(100vh - 240px)', borderRadius: 'var(--radius-xl)' }} />
             ) : (
-                <MapComponent>
+                <MapComponent style={{ height: 'calc(100vh - 240px)', minHeight: '360px' }}>
                     {points.length > 0 && (
                         <HeatmapLayer
                             fitBoundsOnLoad

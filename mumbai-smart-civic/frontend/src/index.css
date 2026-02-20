@@ -417,6 +417,16 @@ ul {
   letter-spacing: -0.5px;
 }
 
+.user-info-desktop {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .user-info-desktop {
+    display: flex;
+  }
+}
+
 /* Main Content */
 .main-content {
   margin-left: var(--sidebar-width);

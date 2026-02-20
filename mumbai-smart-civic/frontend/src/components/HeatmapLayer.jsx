@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet.heat';
@@ -28,43 +28,69 @@ export default function HeatmapLayer({
     max = 1.0,
 }) {
     const map = useMap();
+    const heatData = useMemo(() => {
+        if (!Array.isArray(points) || points.length === 0) return [];
+        return points
+            .map((p) => {
+                const rawLat = Number(latitudeExtractor(p));
+                const rawLng = Number(longitudeExtractor(p));
+                const rawIntensity = Number(intensityExtractor(p));
+
+                if (!Number.isFinite(rawLat) || !Number.isFinite(rawLng)) return null;
+                if (rawLat < -90 || rawLat > 90 || rawLng < -180 || rawLng > 180) return null;
+
+                // Leaflet heat is stable with bounded positive intensity values.
+                const intensity = Number.isFinite(rawIntensity)
+                    ? Math.min(1, Math.max(0.05, rawIntensity))
+                    : 0.5;
+                return [rawLat, rawLng, intensity];
+            })
+            .filter(Boolean);
+    }, [points, latitudeExtractor, longitudeExtractor, intensityExtractor]);
 
     useEffect(() => {
-        if (!points || points.length === 0) return;
+        if (!heatData.length) return undefined;
 
-        const heatData = points.map((p) => [
-            latitudeExtractor(p),
-            longitudeExtractor(p),
-            intensityExtractor(p),
-        ]);
+        let heatLayer = null;
 
-        const heat = L.heatLayer(heatData, {
-            radius,
-            blur,
-            maxZoom,
-            max,
-            gradient: {
-                0.0: '#0d0887',
-                0.2: '#6a00a8',
-                0.4: '#b12a90',
-                0.6: '#e16462',
-                0.8: '#fca636',
-                1.0: '#f0f921',
-            },
-        });
+        try {
+            if (!map.getSize || map.getSize().x <= 0 || map.getSize().y <= 0) {
+                map.invalidateSize(false);
+            }
 
-        heat.addTo(map);
+            heatLayer = L.heatLayer(heatData, {
+                radius,
+                blur,
+                maxZoom,
+                max,
+                gradient: {
+                    0.0: '#0d0887',
+                    0.2: '#6a00a8',
+                    0.4: '#b12a90',
+                    0.6: '#e16462',
+                    0.8: '#fca636',
+                    1.0: '#f0f921',
+                },
+            });
 
-        // Fit bounds
-        if ((fitBoundsOnLoad || fitBoundsOnUpdate) && heatData.length > 0) {
-            const bounds = L.latLngBounds(heatData.map(([lat, lng]) => [lat, lng]));
-            map.fitBounds(bounds, { padding: [40, 40] });
+            heatLayer.addTo(map);
+
+            if ((fitBoundsOnLoad || fitBoundsOnUpdate) && heatData.length > 0) {
+                const bounds = L.latLngBounds(heatData.map(([lat, lng]) => [lat, lng]));
+                if (bounds.isValid()) {
+                    map.fitBounds(bounds, { padding: [40, 40] });
+                }
+            }
+        } catch (error) {
+            console.error('Failed to render heatmap layer safely:', error);
         }
 
         return () => {
-            map.removeLayer(heat);
+            if (heatLayer && map.hasLayer(heatLayer)) {
+                map.removeLayer(heatLayer);
+            }
         };
-    }, [points, radius, blur, maxZoom, max, map]);
+    }, [heatData, radius, blur, maxZoom, max, map, fitBoundsOnLoad, fitBoundsOnUpdate]);
 
     return null;
 }

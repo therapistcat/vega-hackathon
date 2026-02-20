@@ -13,12 +13,20 @@ export default function AdminDashboard() {
     useEffect(() => {
         (async () => {
             try {
-                const [statsRes, complaintsRes] = await Promise.all([
-                    api.get('/a/dashboard/stats'),
-                    api.get('/a/complaints?limit=5'),
-                ]);
-                setStats(statsRes.data);
-                setRecent(Array.isArray(complaintsRes.data) ? complaintsRes.data : complaintsRes.data.complaints || []);
+                const complaintsRes = await api.get('/a/complaints');
+                const allComplaints = Array.isArray(complaintsRes.data)
+                    ? complaintsRes.data
+                    : complaintsRes.data.complaints || [];
+                const resolved = allComplaints.filter((c) => c.status === 'Resolved').length;
+                const pending = allComplaints.filter((c) => c.status !== 'Resolved').length;
+                const citizens = new Set(allComplaints.map((c) => c.user_id)).size;
+                setStats({
+                    total: allComplaints.length,
+                    resolved,
+                    pending,
+                    citizens,
+                });
+                setRecent(allComplaints.slice(0, 5));
             } catch {
                 setStats({ total: 156, resolved: 98, pending: 42, citizens: 320 });
                 setRecent([]);

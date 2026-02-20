@@ -27,12 +27,20 @@ function getUser() {
     }
 }
 
+function isAuthorityRole(role) {
+    return role === 'authority' || role === 'admin';
+}
+
 function ProtectedRoute({ children, allowedRole }) {
     const token = localStorage.getItem('token');
     const user = getUser();
     if (!token || !user) return <Navigate to="/" replace />;
-    if (allowedRole && user.role !== allowedRole) {
-        return <Navigate to={user.role === 'admin' ? '/admin/dashboard' : '/citizen/dashboard'} replace />;
+
+    if (allowedRole === 'authority' && !isAuthorityRole(user.role)) {
+        return <Navigate to="/citizen/dashboard" replace />;
+    }
+    if (allowedRole === 'citizen' && user.role !== 'citizen') {
+        return <Navigate to="/admin/dashboard" replace />;
     }
     return children;
 }
@@ -63,8 +71,8 @@ export default function App() {
                 <Route
                     path="/admin/*"
                     element={
-                        <ProtectedRoute allowedRole="admin">
-                            <AppLayout role="admin" />
+                        <ProtectedRoute allowedRole="authority">
+                            <AppLayout role="authority" />
                         </ProtectedRoute>
                     }
                 >

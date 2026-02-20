@@ -11,9 +11,12 @@ export default function AllComplaints() {
         (async () => {
             try {
                 const res = await api.get('/a/complaints');
-                setComplaints(Array.isArray(res.data) ? res.data : res.data.complaints || []);
-            } catch { /* ignore */ }
-            finally { setLoading(false); }
+                setComplaints(Array.isArray(res.data) ? res.data : []);
+            } catch {
+                setComplaints([]);
+            } finally {
+                setLoading(false);
+            }
         })();
     }, []);
 
@@ -42,9 +45,8 @@ export default function AllComplaints() {
                     </p>
                 </div>
 
-                {/* Filter Pills */}
                 <div style={{ display: 'flex', gap: 8, background: 'rgba(255,255,255,0.8)', padding: 6, borderRadius: 16, border: '1px solid rgba(148, 163, 184, 0.2)', backdropFilter: 'blur(8px)' }}>
-                    {['all', 'pending', 'resolved', 'rejected'].map((f) => (
+                    {['all', 'open', 'in progress', 'resolved'].map((f) => (
                         <button
                             key={f}
                             onClick={() => setFilter(f)}
@@ -64,7 +66,6 @@ export default function AllComplaints() {
             <div className="table-glass-container">
                 {filtered.length === 0 ? (
                     <div style={{ padding: 60, textAlign: 'center' }}>
-                        <div style={{ fontSize: 40, opacity: 0.3, marginBottom: 12 }}>🔍</div>
                         <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-secondary)' }}>No results found</h3>
                         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Try adjusting your filters</p>
                     </div>
@@ -74,8 +75,8 @@ export default function AllComplaints() {
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>Title</th>
-                                    <th>Attribute</th>
+                                    <th>Description</th>
+                                    <th>Category</th>
                                     <th>Location</th>
                                     <th>Status</th>
                                     <th>Submitted</th>
@@ -85,22 +86,24 @@ export default function AllComplaints() {
                                 {filtered.map((c, i) => (
                                     <tr key={c.id || i}>
                                         <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>#{c.id || 1000 + i}</td>
-                                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.title || c.description?.slice(0, 40)}</td>
+                                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.description?.slice(0, 50) || 'N/A'}</td>
                                         <td>
                                             <span className="badge-pill" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', fontSize: 11 }}>
                                                 {c.category || 'General'}
                                             </span>
                                         </td>
                                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                            {c.latitude ? `${Number(c.latitude).toFixed(3)}, ${Number(c.longitude).toFixed(3)}` : '—'}
+                                            {Array.isArray(c?.location?.coordinates)
+                                                ? `${Number(c.location.coordinates[1]).toFixed(3)}, ${Number(c.location.coordinates[0]).toFixed(3)}`
+                                                : '-'}
                                         </td>
                                         <td>
-                                            <span className={`badge-pill status-${(c.status || 'pending').toLowerCase()}`}>
-                                                {c.status || 'Pending'}
+                                            <span className={`badge-pill status-${(c.status || 'open').toLowerCase().replace(/\s+/g, '-')}`}>
+                                                {c.status || 'Open'}
                                             </span>
                                         </td>
                                         <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                                            {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
+                                            {c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}
                                         </td>
                                     </tr>
                                 ))}

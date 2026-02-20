@@ -18,7 +18,7 @@ const citizenLinks = [
     { to: '/citizen/notifications', label: 'Notifications', icon: <MdNotifications /> },
 ];
 
-const adminLinks = [
+const authorityLinks = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: <MdDashboard /> },
     { to: '/admin/all-complaints', label: 'All Complaints', icon: <MdList /> },
     { to: '/admin/resolve', label: 'Resolve', icon: <MdCheckCircle /> },
@@ -27,7 +27,8 @@ const adminLinks = [
 
 export default function Sidebar({ role, open, onClose }) {
     const navigate = useNavigate();
-    const links = role === 'admin' ? adminLinks : citizenLinks;
+    const isAuthority = role === 'authority' || role === 'admin';
+    const links = isAuthority ? authorityLinks : citizenLinks;
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -51,7 +52,7 @@ export default function Sidebar({ role, open, onClose }) {
                     }}>SC</div>
                     <div className="brand-text">
                         <h2>Smart Civic</h2>
-                        <span>{role === 'admin' ? 'Admin Portal' : 'Citizen Portal'}</span>
+                        <span>{isAuthority ? 'Authority Portal' : 'Citizen Portal'}</span>
                     </div>
                 </div>
             </div>

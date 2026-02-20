@@ -10,6 +10,7 @@ export default function MyComplaints() {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [category, setCategory] = useState('pothole');
+    const [ward, setWard] = useState('A Ward');
     const [latitude, setLatitude] = useState('');
     const [longitude, setLongitude] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -17,7 +18,7 @@ export default function MyComplaints() {
 
     const fetchComplaints = async () => {
         try {
-            const res = await api.get('/c/complaints');
+            const res = await api.get('/c/complaints/me');
             setComplaints(Array.isArray(res.data) ? res.data : res.data.complaints || []);
         } catch { /* ignore */ }
         finally { setLoading(false); }
@@ -29,14 +30,26 @@ export default function MyComplaints() {
         e.preventDefault();
         setSubmitting(true);
         try {
+            const finalDescription = title
+                ? `${title} - ${description}`
+                : description;
             await api.post('/c/complaints', {
-                title, description, category,
-                latitude: parseFloat(latitude) || 19.076,
-                longitude: parseFloat(longitude) || 72.8777,
+                description: finalDescription,
+                category,
+                ward,
+                location: {
+                    lat: parseFloat(latitude) || 19.076,
+                    lng: parseFloat(longitude) || 72.8777,
+                },
             });
             setToast({ type: 'success', message: 'Complaint submitted successfully!' });
             setShowForm(false);
-            setTitle(''); setDescription(''); setCategory('pothole'); setLatitude(''); setLongitude('');
+            setTitle('');
+            setDescription('');
+            setCategory('pothole');
+            setWard('A Ward');
+            setLatitude('');
+            setLongitude('');
             fetchComplaints();
         } catch (err) {
             setToast({ type: 'error', message: err.response?.data?.detail || 'Failed to submit complaint' });
@@ -96,6 +109,17 @@ export default function MyComplaints() {
                                     <option value="noise">Noise</option>
                                     <option value="other">Other</option>
                                 </select>
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="complaint-ward">Ward</label>
+                                <input
+                                    id="complaint-ward"
+                                    type="text"
+                                    placeholder="A Ward"
+                                    value={ward}
+                                    onChange={(e) => setWard(e.target.value)}
+                                    required
+                                />
                             </div>
                             <div className="form-group">
                                 <label htmlFor="complaint-lat">Latitude</label>

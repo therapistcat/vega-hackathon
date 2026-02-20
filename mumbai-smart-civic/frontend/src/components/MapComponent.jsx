@@ -5,8 +5,15 @@ import 'leaflet/dist/leaflet.css';
 const MUMBAI_CENTER = [19.076, 72.8777];
 
 export default function MapComponent({ children, center = MUMBAI_CENTER, zoom = 12, style }) {
+    const containerStyle = {
+        width: '100%',
+        height: '520px',
+        minHeight: '320px',
+        ...style,
+    };
+
     return (
-        <div className="map-container" style={style}>
+        <div className="map-container" style={containerStyle}>
             <MapContainer
                 center={center}
                 zoom={zoom}

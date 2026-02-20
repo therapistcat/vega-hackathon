@@ -23,6 +23,7 @@ export default function Navbar({ onMenuClick }) {
     const initials = user?.name
         ? user.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
         : 'U';
+    const roleLabel = user?.role === 'authority' ? 'authority' : (user?.role || 'citizen');
 
     return (
         <header className="navbar-glass">
@@ -34,9 +35,9 @@ export default function Navbar({ onMenuClick }) {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ textAlign: 'right', display: 'none', flexDirection: 'column', '@media (min-width: 768px)': { display: 'flex' } }} className="user-info-desktop">
+                <div style={{ textAlign: 'right', flexDirection: 'column' }} className="user-info-desktop">
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{user?.name || 'User'}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{user?.role || 'citizen'}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{roleLabel}</span>
                 </div>
                 <div style={{
                     width: 36, height: 36, borderRadius: '50%',
