@@ -1,152 +1,516 @@
-import React, { useEffect, useState } from 'react';
-import { MdReport, MdCheckCircle, MdPending, MdTrendingUp } from 'react-icons/md';
-import { SkeletonBanner, SkeletonStats, SkeletonTable } from '../../components/Skeleton';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+    MdArrowUpward,
+    MdCheckCircle,
+    MdMyLocation,
+    MdPending,
+    MdPhotoCamera,
+    MdReport,
+    MdTrendingUp,
+} from 'react-icons/md';
+import { SkeletonBanner, SkeletonStats } from '../../components/Skeleton';
 import api from '../../utils/api';
 
-const BANNER_IMG = 'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?q=80&w=2535&auto=format&fit=crop';
+const BANNER_IMG = 'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=2500&auto=format&fit=crop';
+
+const CATEGORY_OPTIONS = [
+    { value: 'garbage', label: 'Garbage' },
+    { value: 'road', label: 'Road/Pothole' },
+    { value: 'water', label: 'Water Supply' },
+    { value: 'electricity', label: 'Electricity' },
+    { value: 'sewage', label: 'Sewage' },
+];
+
+function toErrorMessage(err, fallback = 'Something went wrong') {
+    const detail = err?.response?.data?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+        const first = detail[0];
+        if (typeof first === 'string') return first;
+        if (first && typeof first === 'object' && typeof first.msg === 'string') return first.msg;
+        return fallback;
+    }
+    if (detail && typeof detail === 'object' && typeof detail.msg === 'string') return detail.msg;
+    return fallback;
+}
 
 export default function CitizenDashboard() {
-    const [stats, setStats] = useState(null);
-    const [recent, setRecent] = useState([]);
+    const [myComplaints, setMyComplaints] = useState([]);
+    const [feedComplaints, setFeedComplaints] = useState([]);
+    const [departments, setDepartments] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [showComposer, setShowComposer] = useState(false);
+
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [category, setCategory] = useState('garbage');
+    const [ward, setWard] = useState('A Ward');
+    const [latitude, setLatitude] = useState('');
+    const [longitude, setLongitude] = useState('');
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState('');
+    const [locating, setLocating] = useState(false);
+    const [locationHint, setLocationHint] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [votingIds, setVotingIds] = useState([]);
+    const [toast, setToast] = useState(null);
 
     let user = null;
     try { user = JSON.parse(localStorage.getItem('user')); } catch { }
 
+    const fetchDashboardData = async () => {
+        setError('');
+        try {
+            const [mineRes, feedRes, deptRes] = await Promise.all([
+                api.get('/c/complaints/me'),
+                api.get('/c/complaints/feed'),
+                api.get('/c/departments'),
+            ]);
+            setMyComplaints(Array.isArray(mineRes.data) ? mineRes.data : []);
+            setFeedComplaints(Array.isArray(feedRes.data) ? feedRes.data : []);
+            setDepartments(Array.isArray(deptRes.data) ? deptRes.data : []);
+        } catch (err) {
+            setError(toErrorMessage(err, 'Unable to load dashboard data'));
+            setMyComplaints([]);
+            setFeedComplaints([]);
+            setDepartments([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        (async () => {
-            try {
-                const complaintsRes = await api.get('/c/complaints/me');
-                const allComplaints = Array.isArray(complaintsRes.data)
-                    ? complaintsRes.data
-                    : complaintsRes.data.complaints || [];
-
-                const resolved = allComplaints.filter((c) => c.status === 'Resolved').length;
-                const pending = allComplaints.filter((c) => c.status === 'Open').length;
-                const inProgress = allComplaints.filter((c) => c.status === 'In Progress').length;
-
-                setStats({
-                    total: allComplaints.length,
-                    resolved,
-                    pending,
-                    in_progress: inProgress,
-                });
-                setRecent(allComplaints.slice(0, 5));
-            } catch {
-                setStats({ total: 12, resolved: 8, pending: 3, in_progress: 1 });
-                setRecent([]); // fallback empty for clean look
-            } finally {
-                setLoading(false);
-            }
-        })();
+        fetchDashboardData();
     }, []);
+
+    useEffect(() => {
+        requestLiveLocation();
+    }, []);
+
+    const routedDepartment = useMemo(() => {
+        const row = departments.find((d) => d.category?.toLowerCase() === category.toLowerCase());
+        return row?.department || 'General Civic Response';
+    }, [category, departments]);
+
+    const stats = useMemo(() => {
+        const total = myComplaints.length;
+        const resolved = myComplaints.filter((c) => c.status === 'Resolved').length;
+        const pending = myComplaints.filter((c) => c.status === 'Open').length;
+        const inProgress = myComplaints.filter((c) => c.status === 'In Progress').length;
+        return { total, resolved, pending, inProgress };
+    }, [myComplaints]);
+
+    const departmentSummary = useMemo(() => {
+        const counts = {};
+        myComplaints.forEach((c) => {
+            const dept = c.department || c.predicted_department || 'General Civic Response';
+            counts[dept] = (counts[dept] || 0) + 1;
+        });
+        return Object.entries(counts)
+            .map(([department, count]) => ({ department, count }))
+            .sort((a, b) => b.count - a.count);
+    }, [myComplaints]);
+
+    const requestLiveLocation = () => {
+        if (!navigator.geolocation) {
+            setLocationHint('Geolocation is not supported in this browser');
+            return;
+        }
+
+        setLocating(true);
+        setLocationHint('Fetching your live location...');
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setLatitude(position.coords.latitude.toFixed(6));
+                setLongitude(position.coords.longitude.toFixed(6));
+                setLocationHint('Live location captured from your device');
+                setLocating(false);
+            },
+            () => {
+                setLocationHint('Location access denied. Enter latitude/longitude manually.');
+                setLocating(false);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            },
+        );
+    };
+
+    useEffect(() => {
+        if (showComposer && (!latitude || !longitude)) {
+            requestLiveLocation();
+        }
+    }, [showComposer]);
+
+    const handleImageChange = (e) => {
+        const file = e.target.files?.[0] || null;
+        setImageFile(file);
+        if (imagePreview) {
+            URL.revokeObjectURL(imagePreview);
+        }
+        if (file) {
+            setImagePreview(URL.createObjectURL(file));
+        } else {
+            setImagePreview('');
+        }
+    };
+
+    const resetComposer = () => {
+        setTitle('');
+        setDescription('');
+        setCategory('garbage');
+        setWard('A Ward');
+        setLatitude('');
+        setLongitude('');
+        setImageFile(null);
+        if (imagePreview) {
+            URL.revokeObjectURL(imagePreview);
+        }
+        setImagePreview('');
+        setLocationHint('');
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        const parsedLat = parseFloat(latitude);
+        const parsedLng = parseFloat(longitude);
+        if (!imageFile) {
+            setToast({ type: 'error', message: 'Complaint image is mandatory' });
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+        if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+            setToast({ type: 'error', message: 'Live location is required before submitting' });
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            const finalDescription = title ? `${title} - ${description}` : description;
+            const formData = new FormData();
+            formData.append('description', finalDescription);
+            formData.append('category', category);
+            formData.append('ward', ward);
+            formData.append('lat', String(parsedLat));
+            formData.append('lng', String(parsedLng));
+            formData.append('image', imageFile);
+
+            await api.post('/c/complaints', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            setToast({ type: 'success', message: 'Complaint submitted successfully' });
+            setShowComposer(false);
+            resetComposer();
+            await fetchDashboardData();
+        } catch (err) {
+            setToast({ type: 'error', message: toErrorMessage(err, 'Failed to submit complaint') });
+        } finally {
+            setSubmitting(false);
+            setTimeout(() => setToast(null), 3500);
+        }
+    };
+
+    const handleUpvote = async (complaintId) => {
+        const item = feedComplaints.find((c) => c.id === complaintId);
+        if (!item || votingIds.includes(complaintId)) return;
+
+        const optimistic = {
+            ...item,
+            has_upvoted: !item.has_upvoted,
+            upvotes_count: item.has_upvoted
+                ? Math.max((item.upvotes_count || 0) - 1, 0)
+                : (item.upvotes_count || 0) + 1,
+        };
+
+        setVotingIds((prev) => [...prev, complaintId]);
+        setFeedComplaints((prev) => prev.map((c) => (c.id === complaintId ? optimistic : c)));
+        setMyComplaints((prev) => prev.map((c) => (c.id === complaintId ? optimistic : c)));
+
+        try {
+            const res = await api.post(`/c/complaints/${complaintId}/upvote`);
+            const updated = res.data;
+            setFeedComplaints((prev) => prev.map((c) => (c.id === complaintId ? { ...c, ...updated } : c)));
+            setMyComplaints((prev) => prev.map((c) => (c.id === complaintId ? { ...c, ...updated } : c)));
+        } catch {
+            setFeedComplaints((prev) => prev.map((c) => (c.id === complaintId ? item : c)));
+            setMyComplaints((prev) => prev.map((c) => (c.id === complaintId ? item : c)));
+            setToast({ type: 'error', message: 'Unable to upvote right now' });
+            setTimeout(() => setToast(null), 2500);
+        } finally {
+            setVotingIds((prev) => prev.filter((id) => id !== complaintId));
+        }
+    };
 
     if (loading) {
         return (
             <div className="page-container">
                 <SkeletonBanner />
                 <SkeletonStats />
-                <div className="table-glass-container"><SkeletonTable /></div>
             </div>
         );
     }
 
     return (
         <div className="page-container">
-            {/* Banner */}
             <div className="banner-hero">
                 <img src={BANNER_IMG} alt="Mumbai cityscape" loading="lazy" />
                 <div className="banner-content">
-                    <h2>Welcome back, {user?.name || 'Citizen'} 👋</h2>
-                    <p>Here's an overview of your civic activity</p>
+                    <h2>Welcome, {user?.name || 'Citizen'}</h2>
+                    <p>Report live issues, route them to departments, and boost important complaints with upvotes.</p>
                 </div>
             </div>
 
-            {/* Stats - Using new Glass Classes */}
+            {error && (
+                <div style={{ marginBottom: 14, color: '#b91c1c', fontSize: 13, fontWeight: 600 }}>
+                    {error}
+                </div>
+            )}
+
             <div className="dashboard-grid">
                 <div className="card-stat-glass">
                     <div className="card-header-flex">
                         <div className="card-icon-box" style={{ background: 'var(--info-bg)', color: 'var(--info)' }}>
                             <MdReport />
                         </div>
-                        <span className="badge-pill" style={{ background: 'var(--success-bg)', color: 'var(--success)', fontSize: 11 }}>+2 New</span>
                     </div>
-                    <div className="card-value-large">{stats?.total ?? 0}</div>
-                    <div className="card-label-sub">Total Complaints</div>
+                    <div className="card-value-large">{stats.total}</div>
+                    <div className="card-label-sub">Your Complaints</div>
                 </div>
-
                 <div className="card-stat-glass">
                     <div className="card-header-flex">
                         <div className="card-icon-box" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>
                             <MdCheckCircle />
                         </div>
                     </div>
-                    <div className="card-value-large">{stats?.resolved ?? 0}</div>
-                    <div className="card-label-sub">Resolved Cases</div>
+                    <div className="card-value-large">{stats.resolved}</div>
+                    <div className="card-label-sub">Resolved</div>
                 </div>
-
                 <div className="card-stat-glass">
                     <div className="card-header-flex">
                         <div className="card-icon-box" style={{ background: 'var(--warning-bg)', color: 'var(--warning)' }}>
                             <MdPending />
                         </div>
                     </div>
-                    <div className="card-value-large">{stats?.pending ?? 0}</div>
-                    <div className="card-label-sub">Pending Action</div>
+                    <div className="card-value-large">{stats.pending}</div>
+                    <div className="card-label-sub">Open</div>
                 </div>
-
                 <div className="card-stat-glass">
                     <div className="card-header-flex">
-                        <div className="card-icon-box" style={{ background: 'rgba(139, 92, 246, 0.1)', color: '#8B5CF6' }}>
+                        <div className="card-icon-box" style={{ background: 'rgba(16, 185, 129, 0.12)', color: 'var(--success)' }}>
                             <MdTrendingUp />
                         </div>
                     </div>
-                    <div className="card-value-large">{stats?.in_progress ?? 0}</div>
+                    <div className="card-value-large">{stats.inProgress}</div>
                     <div className="card-label-sub">In Progress</div>
                 </div>
             </div>
 
-            {/* Recent - Glass Table */}
-            <div className="table-glass-container">
-                <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(148, 163, 184, 0.1)', background: 'rgba(255,255,255,0.5)' }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 600 }}>Recent Activity</h3>
+            <div className="dashboard-shell">
+                <div className="dashboard-left">
+                    <div className="table-glass-container" style={{ marginBottom: 18 }}>
+                        <div className="dash-section-head">
+                            <h3>Quick Complaint</h3>
+                            <button
+                                type="button"
+                                className={`btn ${showComposer ? 'btn-ghost' : 'btn-primary-filled'}`}
+                                onClick={() => {
+                                    const next = !showComposer;
+                                    setShowComposer(next);
+                                    if (!next) resetComposer();
+                                }}
+                            >
+                                {showComposer ? 'Close' : 'Report Issue'}
+                            </button>
+                        </div>
+
+                        {showComposer && (
+                            <div className="dash-composer-wrap">
+                                <form onSubmit={handleSubmit}>
+                                    <div className="composer-grid">
+                                        <div className="form-group">
+                                            <label htmlFor="dash-title">Title</label>
+                                            <input
+                                                id="dash-title"
+                                                type="text"
+                                                value={title}
+                                                onChange={(e) => setTitle(e.target.value)}
+                                                placeholder="Brief issue title"
+                                                required
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label htmlFor="dash-category">Category</label>
+                                            <select id="dash-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+                                                {CATEGORY_OPTIONS.map((opt) => (
+                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label htmlFor="dash-desc">Description</label>
+                                        <textarea
+                                            id="dash-desc"
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                            placeholder="Explain what happened and where exactly."
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="composer-grid">
+                                        <div className="form-group">
+                                            <label htmlFor="dash-ward">Ward</label>
+                                            <input id="dash-ward" type="text" value={ward} onChange={(e) => setWard(e.target.value)} required />
+                                        </div>
+                                        <div className="form-group">
+                                            <label htmlFor="dash-lat">Latitude</label>
+                                            <input
+                                                id="dash-lat"
+                                                type="number"
+                                                step="any"
+                                                value={latitude}
+                                                onChange={(e) => setLatitude(e.target.value)}
+                                                required
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label htmlFor="dash-lng">Longitude</label>
+                                            <input
+                                                id="dash-lng"
+                                                type="number"
+                                                step="any"
+                                                value={longitude}
+                                                onChange={(e) => setLongitude(e.target.value)}
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="composer-actions">
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost"
+                                            disabled={locating}
+                                            onClick={requestLiveLocation}
+                                        >
+                                            <MdMyLocation /> {locating ? 'Locating...' : 'Use Live Location'}
+                                        </button>
+                                        <div className="location-hint">{locationHint || 'Allow location permission to auto-fill coordinates.'}</div>
+                                    </div>
+
+                                    <div className="form-group">
+                                        <label htmlFor="dash-image">Image Evidence (mandatory)</label>
+                                        <input
+                                            id="dash-image"
+                                            type="file"
+                                            accept="image/*"
+                                            capture="environment"
+                                            onChange={handleImageChange}
+                                            required
+                                        />
+                                    </div>
+
+                                    {imagePreview && (
+                                        <div className="image-preview-wrap">
+                                            <img src={imagePreview} alt="Preview" />
+                                        </div>
+                                    )}
+
+                                    <div className="composer-bottom">
+                                        <div className="route-chip">
+                                            Routed to: <strong>{routedDepartment}</strong>
+                                        </div>
+                                        <button type="submit" className="btn btn-success" disabled={submitting}>
+                                            <MdPhotoCamera /> {submitting ? 'Submitting...' : 'Submit Complaint'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="table-glass-container">
+                        <div className="dash-section-head">
+                            <h3>Community Complaint Feed</h3>
+                            <span className="feed-count">{feedComplaints.length} posts</span>
+                        </div>
+                        <div className="reddit-feed">
+                            {feedComplaints.length === 0 && (
+                                <div className="feed-empty">No complaints yet. Be the first to report.</div>
+                            )}
+                            {feedComplaints.map((c) => (
+                                <article key={c.id} className="reddit-card">
+                                    <div className="vote-rail">
+                                        <button
+                                            type="button"
+                                            className={`vote-btn ${c.has_upvoted ? 'active' : ''}`}
+                                            onClick={() => handleUpvote(c.id)}
+                                            disabled={votingIds.includes(c.id)}
+                                        >
+                                            <MdArrowUpward />
+                                        </button>
+                                        <span>{c.upvotes_count || 0}</span>
+                                    </div>
+
+                                    <div className="feed-main">
+                                        <div className="feed-meta">
+                                            <span>{c.category} | {c.ward}</span>
+                                            <span>{c.created_at ? new Date(c.created_at).toLocaleString() : '-'}</span>
+                                        </div>
+                                        <h4>{c.description?.slice(0, 160) || 'Complaint'}</h4>
+                                        <div className="feed-tags">
+                                            <span className="tag">Status: {c.status}</span>
+                                            <span className="tag">Department: {c.department || c.predicted_department || 'N/A'}</span>
+                                            <span className="tag">Priority: {c.priority_score}</span>
+                                        </div>
+                                        {c.image_url && (
+                                            <div className="feed-image-wrap">
+                                                <img
+                                                    src={c.image_url}
+                                                    alt="Complaint evidence"
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    </div>
                 </div>
 
-                {recent.length === 0 ? (
-                    <div style={{ padding: 40, textAlign: 'center', opacity: 0.6 }}>
-                        <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
-                        <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-secondary)' }}>No complaints yet</h3>
-                        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Start by filing your first civic complaint</p>
+                <div className="dashboard-right">
+                    <div className="table-glass-container">
+                        <div className="dash-section-head">
+                            <h3>Department Routing</h3>
+                        </div>
+                        <div style={{ padding: 16, display: 'grid', gap: 10 }}>
+                            {departmentSummary.length === 0 && (
+                                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No complaints filed yet.</div>
+                            )}
+                            {departmentSummary.map((row) => (
+                                <div key={row.department} className="glass-panel" style={{ padding: 12 }}>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Department</div>
+                                    <div style={{ fontSize: 14, fontWeight: 700 }}>{row.department}</div>
+                                    <div style={{ marginTop: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                                        Complaints filed: {row.count}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                        <table className="table-modern">
-                            <thead>
-                                <tr>
-                                    <th>Title</th>
-                                    <th>Category</th>
-                                    <th>Status</th>
-                                    <th>Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {recent.map((c, i) => (
-                                    <tr key={c.id || i}>
-                                        <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{c.title || c.description?.slice(0, 40)}</td>
-                                        <td style={{ textTransform: 'capitalize' }}>{c.category || '—'}</td>
-                                        <td>
-                                            <span className={`badge-pill status-${(c.status || 'pending').toLowerCase()}`}>
-                                                {c.status || 'Pending'}
-                                            </span>
-                                        </td>
-                                        <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                </div>
             </div>
+
+            {toast && <div className={`toast toast-${toast.type}`}>{toast.message}</div>}
         </div>
     );
 }

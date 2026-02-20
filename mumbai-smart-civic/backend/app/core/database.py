@@ -50,3 +50,6 @@ async def init_indexes() -> None:
     await db["complaints"].create_index([("location", GEOSPHERE)])
     await db["complaints"].create_index([("created_at", ASCENDING)])
     await db["complaints"].create_index([("user_id", ASCENDING), ("created_at", ASCENDING)])
+    await db["complaints"].create_index([("department", ASCENDING)])
+    await db["complaints"].create_index([("status", ASCENDING)])
+    await db["complaints"].create_index([("upvotes_count", ASCENDING), ("created_at", ASCENDING)])

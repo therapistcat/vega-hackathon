@@ -28,7 +28,11 @@ class ComplaintResponse(BaseModel):
     ward: str
     priority_score: float
     duplicate_group: str | None = None
+    department: str | None = None
     predicted_department: str | None = None
+    image_url: str | None = None
+    upvotes_count: int = Field(default=0, ge=0)
+    has_upvoted: bool = False
     location: dict
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -42,3 +46,8 @@ class SpatialAnalyticsPoint(BaseModel):
     lat: float
     lng: float
     intensity: float = Field(ge=0.0, le=1.0)
+
+
+class DepartmentRoute(BaseModel):
+    category: str
+    department: str

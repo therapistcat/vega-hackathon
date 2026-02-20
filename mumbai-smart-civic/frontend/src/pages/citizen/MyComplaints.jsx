@@ -1,58 +1,162 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SkeletonTable } from '../../components/Skeleton';
 import api from '../../utils/api';
 
+function toErrorMessage(err, fallback = 'Something went wrong') {
+    const detail = err?.response?.data?.detail;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+        const first = detail[0];
+        if (typeof first === 'string') return first;
+        if (first && typeof first === 'object' && typeof first.msg === 'string') return first.msg;
+        return fallback;
+    }
+    if (detail && typeof detail === 'object' && typeof detail.msg === 'string') return detail.msg;
+    return fallback;
+}
+
 export default function MyComplaints() {
     const [complaints, setComplaints] = useState([]);
+    const [departments, setDepartments] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
 
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [category, setCategory] = useState('pothole');
+    const [category, setCategory] = useState('garbage');
     const [ward, setWard] = useState('A Ward');
     const [latitude, setLatitude] = useState('');
     const [longitude, setLongitude] = useState('');
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [toast, setToast] = useState(null);
+    const [locating, setLocating] = useState(false);
+    const [locationHint, setLocationHint] = useState('');
 
     const fetchComplaints = async () => {
         try {
             const res = await api.get('/c/complaints/me');
-            setComplaints(Array.isArray(res.data) ? res.data : res.data.complaints || []);
-        } catch { /* ignore */ }
-        finally { setLoading(false); }
+            setComplaints(Array.isArray(res.data) ? res.data : []);
+        } catch {
+            setComplaints([]);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    useEffect(() => { fetchComplaints(); }, []);
+    const fetchDepartments = async () => {
+        try {
+            const res = await api.get('/c/departments');
+            setDepartments(Array.isArray(res.data) ? res.data : []);
+        } catch {
+            setDepartments([]);
+        }
+    };
+
+    useEffect(() => {
+        fetchComplaints();
+        fetchDepartments();
+    }, []);
+
+    const requestLiveLocation = () => {
+        if (!navigator.geolocation) {
+            setLocationHint('Geolocation is not supported in this browser');
+            return;
+        }
+        setLocating(true);
+        setLocationHint('Fetching live location...');
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setLatitude(position.coords.latitude.toFixed(6));
+                setLongitude(position.coords.longitude.toFixed(6));
+                setLocationHint('Live location fetched from your device');
+                setLocating(false);
+            },
+            () => {
+                setLocationHint('Location permission denied. Please enter coordinates manually.');
+                setLocating(false);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            },
+        );
+    };
+
+    useEffect(() => {
+        requestLiveLocation();
+    }, []);
+
+    useEffect(() => {
+        if (showForm && (!latitude || !longitude)) {
+            requestLiveLocation();
+        }
+    }, [showForm]);
+
+    const routedDepartment = useMemo(() => {
+        const row = departments.find((d) => d.category?.toLowerCase() === category.toLowerCase());
+        return row?.department || 'General Civic Response';
+    }, [category, departments]);
+
+    const handleImageChange = (e) => {
+        const file = e.target.files?.[0] || null;
+        setImageFile(file);
+        if (imagePreview) {
+            URL.revokeObjectURL(imagePreview);
+        }
+        if (file) {
+            setImagePreview(URL.createObjectURL(file));
+        } else {
+            setImagePreview('');
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        const parsedLat = parseFloat(latitude);
+        const parsedLng = parseFloat(longitude);
+        if (!imageFile) {
+            setToast({ type: 'error', message: 'Complaint image is mandatory' });
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+        if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) {
+            setToast({ type: 'error', message: 'Please allow live location or enter valid latitude/longitude' });
+            setTimeout(() => setToast(null), 3000);
+            return;
+        }
+
         setSubmitting(true);
         try {
-            const finalDescription = title
-                ? `${title} - ${description}`
-                : description;
-            await api.post('/c/complaints', {
-                description: finalDescription,
-                category,
-                ward,
-                location: {
-                    lat: parseFloat(latitude) || 19.076,
-                    lng: parseFloat(longitude) || 72.8777,
-                },
+            const finalDescription = title ? `${title} - ${description}` : description;
+            const formData = new FormData();
+            formData.append('description', finalDescription);
+            formData.append('category', category);
+            formData.append('ward', ward);
+            formData.append('lat', String(parsedLat));
+            formData.append('lng', String(parsedLng));
+            formData.append('image', imageFile);
+
+            await api.post('/c/complaints', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
-            setToast({ type: 'success', message: 'Complaint submitted successfully!' });
+
+            setToast({ type: 'success', message: 'Complaint submitted successfully' });
             setShowForm(false);
             setTitle('');
             setDescription('');
-            setCategory('pothole');
+            setCategory('garbage');
             setWard('A Ward');
             setLatitude('');
             setLongitude('');
+            setImageFile(null);
+            setImagePreview('');
+            requestLiveLocation();
             fetchComplaints();
         } catch (err) {
-            setToast({ type: 'error', message: err.response?.data?.detail || 'Failed to submit complaint' });
+            setToast({ type: 'error', message: toErrorMessage(err, 'Failed to submit complaint') });
         } finally {
             setSubmitting(false);
             setTimeout(() => setToast(null), 3500);
@@ -82,7 +186,7 @@ export default function MyComplaints() {
                     id="new-complaint-btn"
                     onClick={() => setShowForm(!showForm)}
                 >
-                    {showForm ? '✕ Cancel' : '＋ New Complaint'}
+                    {showForm ? 'Cancel' : 'New Complaint'}
                 </button>
             </div>
 
@@ -91,47 +195,75 @@ export default function MyComplaints() {
                     <form onSubmit={handleSubmit}>
                         <div className="form-group">
                             <label htmlFor="complaint-title">Title</label>
-                            <input id="complaint-title" type="text" placeholder="Brief title for your complaint" value={title} onChange={(e) => setTitle(e.target.value)} required />
+                            <input id="complaint-title" type="text" placeholder="Brief title" value={title} onChange={(e) => setTitle(e.target.value)} required />
                         </div>
                         <div className="form-group">
                             <label htmlFor="complaint-desc">Description</label>
-                            <textarea id="complaint-desc" placeholder="Describe the issue in detail…" value={description} onChange={(e) => setDescription(e.target.value)} required />
+                            <textarea id="complaint-desc" placeholder="Describe the issue" value={description} onChange={(e) => setDescription(e.target.value)} required />
                         </div>
+
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
                             <div className="form-group">
                                 <label htmlFor="complaint-cat">Category</label>
                                 <select id="complaint-cat" value={category} onChange={(e) => setCategory(e.target.value)}>
-                                    <option value="pothole">Pothole</option>
                                     <option value="garbage">Garbage</option>
-                                    <option value="streetlight">Streetlight</option>
+                                    <option value="road">Road/Pothole</option>
                                     <option value="water">Water Supply</option>
+                                    <option value="electricity">Electricity</option>
                                     <option value="sewage">Sewage</option>
-                                    <option value="noise">Noise</option>
-                                    <option value="other">Other</option>
                                 </select>
                             </div>
                             <div className="form-group">
                                 <label htmlFor="complaint-ward">Ward</label>
-                                <input
-                                    id="complaint-ward"
-                                    type="text"
-                                    placeholder="A Ward"
-                                    value={ward}
-                                    onChange={(e) => setWard(e.target.value)}
-                                    required
-                                />
+                                <input id="complaint-ward" type="text" value={ward} onChange={(e) => setWard(e.target.value)} required />
                             </div>
                             <div className="form-group">
                                 <label htmlFor="complaint-lat">Latitude</label>
-                                <input id="complaint-lat" type="number" step="any" placeholder="19.076" value={latitude} onChange={(e) => setLatitude(e.target.value)} />
+                                <input id="complaint-lat" type="number" step="any" placeholder="19.076" value={latitude} onChange={(e) => setLatitude(e.target.value)} required />
                             </div>
                             <div className="form-group">
                                 <label htmlFor="complaint-lng">Longitude</label>
-                                <input id="complaint-lng" type="number" step="any" placeholder="72.8777" value={longitude} onChange={(e) => setLongitude(e.target.value)} />
+                                <input id="complaint-lng" type="number" step="any" placeholder="72.8777" value={longitude} onChange={(e) => setLongitude(e.target.value)} required />
                             </div>
                         </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                            <button type="button" className="btn btn-ghost" onClick={requestLiveLocation} disabled={locating}>
+                                {locating ? 'Fetching Location...' : 'Use Live Location'}
+                            </button>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                {locationHint || 'Latitude/Longitude are auto-filled from your device location.'}
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label htmlFor="complaint-image">Complaint Image (mandatory)</label>
+                            <input
+                                id="complaint-image"
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={handleImageChange}
+                                required
+                            />
+                        </div>
+
+                        {imagePreview && (
+                            <div style={{ marginBottom: 12 }}>
+                                <img
+                                    src={imagePreview}
+                                    alt="Complaint preview"
+                                    style={{ width: 200, height: 130, objectFit: 'cover', borderRadius: 10, border: '1px solid rgba(148,163,184,0.2)' }}
+                                />
+                            </div>
+                        )}
+
+                        <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--text-muted)' }}>
+                            Routed department: <strong style={{ color: 'var(--text-primary)' }}>{routedDepartment}</strong>
+                        </div>
+
                         <button type="submit" className="btn btn-success" id="submit-complaint" disabled={submitting}>
-                            {submitting ? 'Submitting…' : 'Submit Complaint'}
+                            {submitting ? 'Submitting...' : 'Submit Complaint'}
                         </button>
                     </form>
                 </div>
@@ -139,40 +271,41 @@ export default function MyComplaints() {
 
             {complaints.length === 0 ? (
                 <div className="empty-state">
-                    <div className="empty-state-img">
-                        <img src="https://images.indianexpress.com/2025/12/potholes.jpg?w=1200" alt="City road" loading="lazy" />
-                    </div>
                     <h3>No complaints filed</h3>
                     <p>Click "New Complaint" to report a civic issue in your area</p>
                 </div>
             ) : (
-                <div className="data-table-wrap">
-                    <table className="data-table" id="complaints-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Title</th>
-                                <th>Category</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {complaints.map((c, i) => (
-                                <tr key={c.id || i}>
-                                    <td style={{ color: 'var(--text-faint)' }}>{i + 1}</td>
-                                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{c.title || c.description?.slice(0, 50)}</td>
-                                    <td style={{ textTransform: 'capitalize' }}>{c.category || '—'}</td>
-                                    <td>
-                                        <span className={`badge badge-${(c.status || 'pending').toLowerCase().replace(/\s+/g, '_')}`}>
-                                            {c.status || 'Pending'}
-                                        </span>
-                                    </td>
-                                    <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div style={{ display: 'grid', gap: 14 }}>
+                    {complaints.map((c, i) => (
+                        <div key={c.id || i} className="glass-panel" style={{ padding: 16 }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 12 }}>
+                                <div>
+                                    {c.image_url ? (
+                                        <img
+                                            src={c.image_url}
+                                            alt="Complaint evidence"
+                                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            style={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 8 }}
+                                        />
+                                    ) : (
+                                        <div style={{ width: 140, height: 100, borderRadius: 8, background: '#e2e8f0' }} />
+                                    )}
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{c.description?.slice(0, 90) || 'Complaint'}</div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+                                        Category: {c.category} | Ward: {c.ward}
+                                    </div>
+                                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>
+                                        Department: <strong style={{ color: 'var(--text-primary)' }}>{c.department || c.predicted_department || 'N/A'}</strong>
+                                    </div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                        Status: {c.status} | Priority: {c.priority_score}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 
