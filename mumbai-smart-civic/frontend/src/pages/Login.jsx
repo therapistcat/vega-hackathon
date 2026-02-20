@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 
 const IMAGES = [
@@ -21,6 +21,9 @@ const DEMO_ACCOUNTS = {
     },
 };
 
+const inputClassName =
+    'w-full rounded-xl border border-white/30 bg-white/20 px-4 py-3 text-sm text-white placeholder-white/70 backdrop-blur-md transition-all duration-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-400';
+
 export default function Login() {
     const navigate = useNavigate();
     const [email, setEmail] = useState(DEMO_ACCOUNTS.citizen.email);
@@ -30,6 +33,7 @@ export default function Login() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [currentImage, setCurrentImage] = useState(0);
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -68,12 +72,7 @@ export default function Login() {
             }
 
             const res = await api.post('/auth/login', payload);
-            const {
-                access_token,
-                role,
-                authority_rank,
-                authority_level,
-            } = res.data;
+            const { access_token, role, authority_rank, authority_level } = res.data;
 
             const user = {
                 email,
@@ -99,87 +98,102 @@ export default function Login() {
     };
 
     return (
-        <div className="login-page">
-            <div className="login-carousel">
+        <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 sm:px-6">
+            <div className="absolute inset-0">
                 {IMAGES.map((img, index) => (
                     <div
                         key={index}
-                        className={`carousel-slide ${index === currentImage ? 'active' : ''}`}
+                        className={`absolute inset-0 bg-cover bg-center transition-opacity duration-[1600ms] ${index === currentImage ? 'opacity-100' : 'opacity-0'}`}
                         style={{ backgroundImage: `url(${img})` }}
                     />
                 ))}
-                <div className="carousel-overlay" />
             </div>
 
-            <div className="login-card-glass">
-                <div className="login-header">
-                    <div style={{
-                        width: 72, height: 72, background: 'linear-gradient(135deg, #2563EB, #60A5FA)',
-                        borderRadius: '20px', color: '#fff', fontSize: '28px', fontWeight: '800',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px',
-                        boxShadow: '0 15px 35px -5px rgba(37,99,235,0.4)'
-                    }}>
+            <div className="pointer-events-none absolute -top-16 left-8 h-48 w-48 rounded-full bg-blue-400/30 blur-3xl animate-blob" />
+            <div className="pointer-events-none absolute -bottom-20 right-8 h-56 w-56 rounded-full bg-indigo-500/30 blur-3xl animate-blob [animation-delay:2s]" />
+            <div className="absolute inset-0 bg-gradient-to-br from-black/40 via-purple-900/30 to-black/40 backdrop-blur-[2px]" />
+
+            <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/20 bg-white/10 p-6 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:border-white/35 hover:shadow-[0_0_42px_rgba(96,165,250,0.35)] sm:p-8 animate-authFade">
+                <div className="mb-5 text-center">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-3xl font-extrabold text-white shadow-lg shadow-blue-500/35">
                         SC
                     </div>
-                    <h1>Smart Civic</h1>
-                    <p>Mumbai Civic Portal</p>
+                    <h1 className="text-4xl font-extrabold tracking-tight text-white">Smart Civic</h1>
+                    <p className="mt-2 text-white/70">Mumbai Civic Portal</p>
                 </div>
 
                 {error && (
-                    <div style={{
-                        background: 'var(--danger-bg)', color: '#DC2626', padding: '12px',
-                        borderRadius: '12px', marginBottom: '20px', fontSize: '13px', fontWeight: '600',
-                        border: '1px solid rgba(220,38,38,0.2)', textAlign: 'center'
-                    }}>
+                    <div className="mb-4 rounded-xl border border-red-300/50 bg-red-500/20 px-4 py-2 text-center text-sm font-medium text-red-100">
                         {error}
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit}>
-                    <div className="form-input-group">
-                        <label htmlFor="login-as">Login As</label>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="login-as" className="mb-2 block text-sm font-semibold text-white/80">
+                            Login As
+                        </label>
                         <select
                             id="login-as"
-                            className="form-input"
+                            className={inputClassName}
                             value={loginAs}
                             onChange={(e) => setLoginAs(e.target.value)}
                         >
-                            <option value="citizen">Citizen</option>
-                            <option value="authority">Authority</option>
+                            <option className="bg-slate-800 text-white" value="citizen">
+                                Citizen
+                            </option>
+                            <option className="bg-slate-800 text-white" value="authority">
+                                Authority
+                            </option>
                         </select>
                     </div>
 
-                    <div className="form-input-group">
-                        <label htmlFor="email">Email Address</label>
+                    <div>
+                        <label htmlFor="email" className="mb-2 block text-sm font-semibold text-white/80">
+                            Email Address
+                        </label>
                         <input
                             id="email"
                             type="email"
-                            className="form-input"
+                            className={inputClassName}
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
                         />
                     </div>
 
-                    <div className="form-input-group">
-                        <label htmlFor="password">Password</label>
-                        <input
-                            id="password"
-                            type="password"
-                            className="form-input"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
+                    <div>
+                        <label htmlFor="password" className="mb-2 block text-sm font-semibold text-white/80">
+                            Password
+                        </label>
+                        <div className="relative">
+                            <input
+                                id="password"
+                                type={showPassword ? 'text' : 'password'}
+                                className={`${inputClassName} pr-16`}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((prev) => !prev)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-white/80 transition hover:text-white"
+                            >
+                                {showPassword ? 'Hide' : 'Show'}
+                            </button>
+                        </div>
                     </div>
 
                     {loginAs === 'authority' && (
-                        <div className="form-input-group">
-                            <label htmlFor="authority-code">Authority Code</label>
+                        <div>
+                            <label htmlFor="authority-code" className="mb-2 block text-sm font-semibold text-white/80">
+                                Authority Code
+                            </label>
                             <input
                                 id="authority-code"
                                 type="text"
-                                className="form-input"
+                                className={inputClassName}
                                 value={authorityCode}
                                 onChange={(e) => setAuthorityCode(e.target.value)}
                                 required
@@ -187,43 +201,44 @@ export default function Login() {
                         </div>
                     )}
 
-                    <button type="submit" className="btn-gradient" disabled={loading}>
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="mt-2 w-full rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 px-4 py-3 font-semibold text-white shadow-lg shadow-blue-900/40 transition-all duration-300 hover:scale-[1.02] hover:shadow-blue-500/40 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
                         {loading ? 'Authenticating...' : 'Login'}
                     </button>
                 </form>
 
-                <div style={{ marginTop: 20, fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+                <p className="mt-4 text-center text-xs text-white/60">
                     Authority rank is validated by authority code during login.
-                </div>
+                </p>
 
-                <div style={{ marginTop: 24, paddingTop: 18, borderTop: '1px solid rgba(148,163,184,0.15)' }}>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginBottom: 12 }}>
-                        QUICK FILL
-                    </p>
-                    <div style={{ display: 'flex', gap: 12 }}>
+                <div className="mt-5 border-t border-white/20 pt-4">
+                    <p className="mb-3 text-center text-xs font-semibold tracking-[0.22em] text-white/60">QUICK FILL</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <button
                             type="button"
                             onClick={() => fillDemo('citizen')}
-                            style={{
-                                flex: 1, padding: '10px', borderRadius: '12px', border: '1px solid var(--border-default)',
-                                background: '#fff', fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)',
-                                transition: 'all 0.2s'
-                            }}
+                            className="rounded-xl border border-white/30 bg-white/15 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur-md transition hover:bg-white/25"
                         >
                             Citizen
                         </button>
                         <button
                             type="button"
                             onClick={() => fillDemo('authority')}
-                            style={{
-                                flex: 1, padding: '10px', borderRadius: '12px', border: '1px solid var(--border-default)',
-                                background: '#fff', fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)',
-                                transition: 'all 0.2s'
-                            }}
+                            className="rounded-xl border border-white/30 bg-white/15 px-4 py-2 text-sm font-semibold text-white/90 backdrop-blur-md transition hover:bg-white/25"
                         >
                             Authority
                         </button>
                     </div>
+                </div>
+
+                <div className="mt-4 text-center text-sm text-white/60">
+                    <span>New here?</span>
+                    <Link className="ml-2 font-semibold text-blue-200 hover:text-white" to="/signup">
+                        Create account
+                    </Link>
                 </div>
             </div>
         </div>
