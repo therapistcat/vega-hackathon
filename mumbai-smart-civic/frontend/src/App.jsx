@@ -1,0 +1,82 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
+import Login from './pages/Login';
+
+// Citizen pages
+import CitizenDashboard from './pages/citizen/Dashboard';
+import MyComplaints from './pages/citizen/MyComplaints';
+import Heatmap from './pages/citizen/Heatmap';
+import Notifications from './pages/citizen/Notifications';
+
+// Admin pages
+import AdminDashboard from './pages/admin/Dashboard';
+import AllComplaints from './pages/admin/AllComplaints';
+import ResolveComplaint from './pages/admin/ResolveComplaint';
+import Analytics from './pages/admin/Analytics';
+
+// Layout
+import AppLayout from './components/AppLayout';
+
+/* ---- helpers ---- */
+function getUser() {
+    try {
+        return JSON.parse(localStorage.getItem('user'));
+    } catch {
+        return null;
+    }
+}
+
+function ProtectedRoute({ children, allowedRole }) {
+    const token = localStorage.getItem('token');
+    const user = getUser();
+    if (!token || !user) return <Navigate to="/" replace />;
+    if (allowedRole && user.role !== allowedRole) {
+        return <Navigate to={user.role === 'admin' ? '/admin/dashboard' : '/citizen/dashboard'} replace />;
+    }
+    return children;
+}
+
+export default function App() {
+    return (
+        <BrowserRouter>
+            <Routes>
+                {/* Public */}
+                <Route path="/" element={<Login />} />
+
+                {/* Citizen routes */}
+                <Route
+                    path="/citizen/*"
+                    element={
+                        <ProtectedRoute allowedRole="citizen">
+                            <AppLayout role="citizen" />
+                        </ProtectedRoute>
+                    }
+                >
+                    <Route path="dashboard" element={<CitizenDashboard />} />
+                    <Route path="my-complaints" element={<MyComplaints />} />
+                    <Route path="heatmap" element={<Heatmap />} />
+                    <Route path="notifications" element={<Notifications />} />
+                </Route>
+
+                {/* Admin routes */}
+                <Route
+                    path="/admin/*"
+                    element={
+                        <ProtectedRoute allowedRole="admin">
+                            <AppLayout role="admin" />
+                        </ProtectedRoute>
+                    }
+                >
+                    <Route path="dashboard" element={<AdminDashboard />} />
+                    <Route path="all-complaints" element={<AllComplaints />} />
+                    <Route path="resolve" element={<ResolveComplaint />} />
+                    <Route path="analytics" element={<Analytics />} />
+                </Route>
+
+                {/* Fallback */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+        </BrowserRouter>
+    );
+}
